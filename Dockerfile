@@ -11,11 +11,8 @@ COPY requirements.txt .
 # avoid retaining pip's download cache in the image
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the API and its bundled model into /app
-COPY main.py ./
-COPY models/ ./models/
-
-ENV MODEL_PATH=/app/models/iris_random_forest_model.joblib
+# Copy the application code and saved model into /app
+COPY main.py . 
 
 # Document the port used by FastAPI application
 EXPOSE 8000

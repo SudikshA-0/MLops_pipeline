@@ -3,10 +3,3 @@ kiet-cse/
 __pycache__
 .DS_Store
 .env
-.git/
-.github/
-infra/
-tests/
-mlflow.db
-notes.txt
-train.py
