@@ -1,0 +1,50 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: ECS Express Mode service for the Iris API.
+
+Parameters:
+  ImageUri:
+    Type: String
+  ServiceName:
+    Type: String
+    Default: iris-ml-api
+  ClusterName:
+    Type: String
+    Default: iris-mlops-cluster
+  TaskExecutionRoleArn:
+    Type: String
+  InfrastructureRoleArn:
+    Type: String
+Resources:
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref ClusterName
+
+  IrisApiService:
+    Type: AWS::ECS::ExpressGatewayService
+    DependsOn: Cluster
+    Properties:
+      Cluster: !Ref Cluster
+      Cpu: "512"
+      ExecutionRoleArn: !Ref TaskExecutionRoleArn
+      HealthCheckPath: /health
+      InfrastructureRoleArn: !Ref InfrastructureRoleArn
+      Memory: "1024"
+      PrimaryContainer:
+        Image: !Ref ImageUri
+        ContainerPort: 8000
+      ScalingTarget:
+        MinTaskCount: 1
+        MaxTaskCount: 1
+        AutoScalingMetric: AVERAGE_CPU
+        AutoScalingTargetValue: 70
+      ServiceName: !Ref ServiceName
+
+Outputs:
+  ServiceEndpoint:
+    Description: Public HTTPS endpoint for the Iris API.
+    Value: !GetAtt IrisApiService.Endpoint
+  ServiceArn:
+    Value: !GetAtt IrisApiService.ServiceArn
+  ClusterName:
+    Value: !Ref Cluster

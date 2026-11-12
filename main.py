@@ -1,27 +1,42 @@
-from pathlib import Path
-import joblib
-from fastapi import FastAPI, HTTPException, Request
-from pydantic import BaseModel, Field
-import mlflow
-import mlflow.sklearn
-import numpy as np
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Callable
 
+import joblib
+import mlflow
+import mlflow.sklearn
+from fastapi import FastAPI, Request
+from pydantic import BaseModel, Field
 
-# MLFlow Configuration
-MLFLOW_TRACKING_URI = os.getenv(
-    "MLFLOW_TRACKING_URI", "http://127.0.0.1:7001"
+
+APP_DIR = Path(__file__).resolve().parent
+MODEL_PATH = Path(
+    os.getenv("MODEL_PATH", str(APP_DIR / "models" / "iris_random_forest_model.joblib"))
 )
+MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://127.0.0.1:7001")
+MLFLOW_MODEL_URI = os.getenv("MLFLOW_MODEL_URI")
+MLFLOW_MODEL_NAME = os.getenv("MLFLOW_MODEL_NAME", "iris-classifier")
+MLFLOW_MODEL_ALIAS = os.getenv("MLFLOW_MODEL_ALIAS", "champion")
 
-# model:/iris-classifier@champion
-MODEL_URI = "models:/iris-classifier@champion"
 
-def load_mlflow_model():
-    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
-    model = mlflow.sklearn.load_model(MODEL_URI)
-    return model
+def load_model():
+    """Load the bundled model by default, or an MLflow model when configured."""
+    if MLFLOW_MODEL_URI:
+        mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+        return mlflow.sklearn.load_model(MLFLOW_MODEL_URI)
+    return joblib.load(MODEL_PATH)
+
+
+def load_model_version():
+    if MLFLOW_MODEL_URI:
+        client = mlflow.MlflowClient(tracking_uri=MLFLOW_TRACKING_URI)
+        version = client.get_model_version_by_alias(
+            name=MLFLOW_MODEL_NAME,
+            alias=MLFLOW_MODEL_ALIAS,
+        )
+        return str(version.version)
+    return os.getenv("MODEL_VERSION", "local")
 
 class IrisInput(BaseModel):
     sepal_length: float = Field(gt=0)
@@ -30,22 +45,14 @@ class IrisInput(BaseModel):
     petal_width: float = Field(gt=0)
 
 def create_app(
-        model_loader: Callable=load_mlflow_model,
-        version_loader: Callable=None):
-
+    model_loader: Callable = load_model,
+    version_loader: Callable | None = None,
+):
     if version_loader is None:
-        def version_loader():
-            client = mlflow.MlflowClient(
-                        tracking_uri=MLFLOW_TRACKING_URI
-                    )
-            champion_version = client.get_model_version_by_alias(
-                name="iris-classifier",
-                alias="champion"
-            )
-            return champion_version.version
+        version_loader = load_model_version
 
     @asynccontextmanager
-    async def lifespan(app:FastAPI):
+    async def lifespan(app: FastAPI):
         try:
             app.state.model = model_loader()
         except Exception as ex:
@@ -59,7 +66,7 @@ def create_app(
     app = FastAPI(
         title="Iris Classification API",
         description="Iris prediction API powered by MLFlow",
-        version="3.0.0",
+        version="3.1.0",
         lifespan=lifespan
     )
         
@@ -86,7 +93,7 @@ def create_app(
             data.petal_width
         ]]
         prediction = int(model.predict(features)[0])
-        print("Prediction is",prediction)
+        print("Prediction is", prediction)
         return {
             "prediction": prediction,
             "class_name": ["setosa", "versicolor", "virginica"][prediction]
